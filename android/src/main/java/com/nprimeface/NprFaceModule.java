@@ -35,10 +35,6 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
     private static final int CAPTURE_REQUEST_CODE = 1001;
     private static final int GENERATE_AND_IDENTIFY_REQUEST_CODE = 1002;
 
-    // Credentials
-    private static final String LICENSE_CODE = "NPRIMEINJI-48279";
-    private static final String CUSTOMER_REF = "MOSIPMECB";
-
     private Promise capturePromise;
     private Promise initPromise;
     private Promise generateAndIdentifyPromise;
@@ -57,7 +53,7 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
 
     @ReactMethod
     public void configure(Promise promise) {
-        Log.d("NPR_JAVA_SHIELD", "Received configure call. Initializing with hardcoded keys...");
+        Log.d("NPR_JAVA_SHIELD", "Received configure call. Initializing...");
         handleInitialization(promise);
     }
 
@@ -73,15 +69,8 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
                 return;
             }
 
-            // Building JSON manually to avoid "InitRequest" class errors
-            String jsonInput = "{\"request\":{\"licenseCode\":\"" + LICENSE_CODE + "\",\"customerRef\":\"" + CUSTOMER_REF + "\"},\"timestamp\":\"\"}";
-
             Intent initIntent = new Intent(currentActivity, FaceLibActivity.class);
             initIntent.setAction("in.face.lib.init");
-            
-            // Pass the raw bytes of the JSON string to the SDK
-            initIntent.putExtra("input", jsonInput.getBytes());
-            
             currentActivity.startActivityForResult(initIntent, INIT_REQUEST_CODE);
         } catch (Exception e) {
             if (initPromise != null) {
@@ -176,6 +165,7 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
 
                         if (sdkResponse.getSdkError() != null && 1000 == sdkResponse.getSdkError().getErrorCode()) {
                             byte[] captureTemplate = sdkResponse.getResponse().getBioRecord().getTemplate();
+                            // 👇 USE NO_WRAP TO PREVENT BRIDGE CRASH
                             String encodedTemplate = Base64.encodeToString(captureTemplate, Base64.NO_WRAP);
                             capturePromise.resolve(encodedTemplate);
                         } else {
@@ -240,4 +230,4 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
 
     @Override
     public void onNewIntent(Intent intent) {}
-}
+}	
