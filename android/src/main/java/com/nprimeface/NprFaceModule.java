@@ -23,6 +23,7 @@ import in.nprime.injisdk.FaceLibActivity;
 import in.nprime.injisdk.dto.SdkRequest;
 import in.nprime.injisdk.dto.SdkResponse;
 import in.nprime.injisdk.Constants.CaptureMode;
+import in.nprime.injisdk.dto.InitRequest; 
 import in.nprime.injisdk.dto.InitResponse;
 import in.nprime.injisdk.dto.GenerateAndIdentifyTemplateRequest;
 import in.nprime.injisdk.dto.GenerateAndIdentifyTemplateResponse;
@@ -34,6 +35,10 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
     private static final int INIT_REQUEST_CODE = 1000;
     private static final int CAPTURE_REQUEST_CODE = 1001;
     private static final int GENERATE_AND_IDENTIFY_REQUEST_CODE = 1002;
+
+    //  HARDCODED CREDENTIALS
+    private static final String LICENSE_CODE = "NPRIMEINJI-48279";
+    private static final String CUSTOMER_REF = "MOSIPMECB";
 
     private Promise capturePromise;
     private Promise initPromise;
@@ -53,7 +58,7 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
 
     @ReactMethod
     public void configure(Promise promise) {
-        Log.d("NPR_JAVA_SHIELD", "Received configure call. Initializing...");
+        Log.d("NPR_JAVA_SHIELD", "Received configure call. Initializing with hardcoded keys...");
         handleInitialization(promise);
     }
 
@@ -69,8 +74,22 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
                 return;
             }
 
+            //  Create the Init Request DTO
+            InitRequest initRequest = new InitRequest();
+            initRequest.setLicenseCode(LICENSE_CODE);
+            initRequest.setCustomerRef(CUSTOMER_REF);
+
+            //  Wrap in SdkRequest
+            SdkRequest<InitRequest> sdkRequest = new SdkRequest<>();
+            sdkRequest.setRequest(initRequest);
+            sdkRequest.setTimestamp("");
+
             Intent initIntent = new Intent(currentActivity, FaceLibActivity.class);
             initIntent.setAction("in.face.lib.init");
+            
+            // Passing 'input' here tells the SDK to skip the manual login screen
+            initIntent.putExtra("input", new ObjectMapper().writeValueAsBytes(sdkRequest));
+            
             currentActivity.startActivityForResult(initIntent, INIT_REQUEST_CODE);
         } catch (Exception e) {
             if (initPromise != null) {
@@ -95,7 +114,9 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
             }
 
             CaptureRequest captureRequest = new CaptureRequest();
+            // Force Mode 0 (Simple Capture) as requested previously
             captureRequest.setCaptureMode(cameraMode == 1 ? CaptureMode.GUIDED_CAPTURE : CaptureMode.SIMPLE_CAPTURE);
+            // Force Front Camera (ID 1)
             captureRequest.setCameraId(cameraSwitch ? "0" : "1");
             captureRequest.setLivenessCheck(livenessSwitch);
             
@@ -165,7 +186,7 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
 
                         if (sdkResponse.getSdkError() != null && 1000 == sdkResponse.getSdkError().getErrorCode()) {
                             byte[] captureTemplate = sdkResponse.getResponse().getBioRecord().getTemplate();
-                            // 👇 USE NO_WRAP TO PREVENT BRIDGE CRASH
+                            //  NO_WRAP prevents base64 newlines from breaking the bridge
                             String encodedTemplate = Base64.encodeToString(captureTemplate, Base64.NO_WRAP);
                             capturePromise.resolve(encodedTemplate);
                         } else {
