@@ -6,7 +6,7 @@ const LINKING_ERROR =
   '- You rebuilt the app after installing the package\n' +
   '- You are not using Expo Go\n';
 
-// Protects against silent crashes if the Native Module isn't linked properlys
+// Safe native module access
 const NprFaceModule = NativeModules.NprFaceModule
   ? NativeModules.NprFaceModule
   : new Proxy(
@@ -18,52 +18,75 @@ const NprFaceModule = NativeModules.NprFaceModule
       }
     );
 
-/**
- * Initializes the SDK. 
- * Accepts a config object from Inji but ignores it to call the 0-arg Java method.
- */
-export async function configure(config?: any): Promise<boolean> {
+// Prevents the  multiple SDK initializations
+let isInitialized = false;
+
+//  Init helper
+async function ensureInit(): Promise<boolean> {
   try {
-    const initStatus = await NprFaceModule.configure();
-    return initStatus; 
+    if (isInitialized) return true;
+
+    const result = await NprFaceModule.configure();
+
+    if (result) {
+      isInitialized = true;
+      console.info('NPrime: SDK initialized successfully');
+    } else {
+      console.warn('NPrime: SDK initialization failed');
+    }
+
+    return result;
   } catch (e) {
-    console.error('NPrime init failed', e);
+    console.error('NPrime init error', e);
     return false;
   }
 }
 
 /**
- * Performs Face Capture and Comparison.
- * Hardcoded to use the Front Camera.
+ *  FINAL FACE COMPARE FUNCTION
  */
 export async function faceCompare(
-  rearCamera: boolean, // Parameter kept for compatibility with Inji calls
+  rearCamera: boolean, // kept for compatibility (ignored)
   liveness: boolean,
   vcImage: string
 ): Promise<boolean> {
   try {
-    // --- STEP 1: Capture the Face ---
-    // 👇 FIX: We pass 'false' instead of 'rearCamera' to force Front Camera (ID 1)
-    const capturedTemplate = await NprFaceModule.captureFace(
-      false, 
-      liveness,
-      1 // 1 - GUIDED CAPTURE
-    );
+    // 🔹 STEP 0: Initialize SDK (only once)
+    const init = await ensureInit();
 
-    if (!capturedTemplate || capturedTemplate === '') {
-      console.error('NPrime Face capture failed or was cancelled');
+    if (!init) {
+      console.error('NPrime: Initialization failed');
       return false;
     }
 
-    // --- STEP 2: Compare with VC Image ---
-    const status = await NprFaceModule.generateAndIdentifyTemplates(
+    // 🔹 STEP 1: Capture Face (force FRONT camera)
+    const capturedTemplate = await NprFaceModule.captureFace(
+      false,        // force front camera
+      liveness,
+      1             // GUIDED_CAPTURE
+    );
+
+    if (!capturedTemplate || capturedTemplate === '') {
+      console.error('NPrime: Face capture failed or cancelled');
+      return false;
+    }
+
+    // 🔹 STEP 2: Match with VC image
+    const matchResult = await NprFaceModule.generateAndIdentifyTemplates(
       capturedTemplate,
       vcImage
     );
-    
-    return status;
+
+    if (matchResult) {
+      console.info('NPrime: Face match successful');
+    } else {
+      console.warn('NPrime: Face match failed');
+    }
+
+    return matchResult;
+
   } catch (e) {
-    console.error('NPrime Face comparison failed', e);
+    console.error('NPrime: Face comparison error', e);
     return false;
   }
 }
