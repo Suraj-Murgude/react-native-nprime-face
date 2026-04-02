@@ -11,6 +11,7 @@ import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
+import com.facebook.react.bridge.ReadableArray; 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 
@@ -45,29 +46,10 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
         return "NprFaceModule";
     }
 
-    // --- OVERLOADED CONFIGURE METHODS TO PREVENT INJI CRASH ---
-
+    // --- 🟢 FIXED CONFIGURE METHOD: Catch-all for any number of arguments ---
     @ReactMethod
-    public void configure(String arg1, String arg2, String arg3, String arg4, Promise promise) {
-        Log.d("NPR_JAVA_SHIELD", "Received 4 strings from Inji. Initializing...");
-        handleInitialization(promise);
-    }
-
-    @ReactMethod
-    public void configure(String arg1, String arg2, String arg3, Promise promise) {
-        Log.d("NPR_JAVA_SHIELD", "Received 3 strings from Inji. Initializing...");
-        handleInitialization(promise);
-    }
-
-    @ReactMethod
-    public void configure(String arg1, String arg2, Promise promise) {
-        Log.d("NPR_JAVA_SHIELD", "Received 2 strings from Inji. Initializing...");
-        handleInitialization(promise);
-    }
-
-    @ReactMethod
-    public void configure(Promise promise) {
-        Log.d("NPR_JAVA_SHIELD", "Received only Promise. Initializing...");
+    public void configure(ReadableArray args, Promise promise) {
+        Log.d("NPR_JAVA_SHIELD", "Received configure call with " + args.size() + " arguments. Initializing...");
         handleInitialization(promise);
     }
 
@@ -81,7 +63,7 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
                 return;
             }
 
-            // 🟢 UNIVERSAL FIX: Using raw JSON to avoid "cannot find symbol SdkRequest/InitRequest"
+            // Raw JSON to avoid "cannot find symbol SdkRequest/InitRequest"
             String initJson = "{\"request\":{},\"timestamp\":\"\"}";
             byte[] inputData = initJson.getBytes("UTF-8");
 
@@ -110,7 +92,7 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
                 return;
             }
 
-            // 🟢 Manual JSON construction for Capture to bypass SdkRequest class issues
+            // Manual JSON construction to bypass DTO class issues
             String mode = (cameraMode == 1) ? "GUIDED_CAPTURE" : "SIMPLE_CAPTURE";
             String camId = cameraSwitch ? "0" : "1";
             
@@ -137,7 +119,6 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
                 return;
             }
             
-            // 🟢 Manual JSON for Identify
             String identifyJson = "{\"request\":{\"trustLevel\":\"Low\",\"capturedTemplateData\":\"" + capturedTemplate + "\",\"vcImageData\":\"" + vcImageData + "\"},\"timestamp\":\"\"}";
 
             Intent intent = new Intent(currentActivity, FaceLibActivity.class);
