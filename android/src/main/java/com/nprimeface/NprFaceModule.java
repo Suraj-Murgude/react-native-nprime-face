@@ -3,15 +3,12 @@ package com.nprimeface;
 import android.app.Activity;
 import android.content.Intent;
 import android.util.Base64;
-import android.util.Log;
-import android.widget.Toast;
 
 import com.facebook.react.bridge.ActivityEventListener;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
-import com.facebook.react.bridge.ReadableMap;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -25,18 +22,18 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
 
     private static final int INIT_REQUEST_CODE = 1000;
     private static final int CAPTURE_REQUEST_CODE = 1001;
-    private static final int GENERATE_AND_IDENTIFY_REQUEST_CODE = 1002;
+    private static final int MATCH_REQUEST_CODE = 1002;
 
-    private Promise capturePromise;
     private Promise initPromise;
-    private Promise generateAndIdentifyPromise;
+    private Promise capturePromise;
+    private Promise matchPromise;
 
     private final ReactApplicationContext reactContext;
 
-    public NprFaceModule(ReactApplicationContext reactContext) {
-        super(reactContext);
-        this.reactContext = reactContext;
-        reactContext.addActivityEventListener(this);
+    public NprFaceModule(ReactApplicationContext context) {
+        super(context);
+        this.reactContext = context;
+        context.addActivityEventListener(this);
     }
 
     @Override
@@ -44,70 +41,86 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
         return "NprFaceModule";
     }
 
-    // ✅ FIXED: Accept object from JS (configure({}))
+    // ✅ EXACT SDK METHOD
     @ReactMethod
-    public void configure(ReadableMap config, Promise promise) {
-        Log.d("NPR_DEBUG", "Configure called");
-
+    public void configure(Promise promise) {
         try {
             this.initPromise = promise;
-            Activity currentActivity = getCurrentActivity();
+            Activity activity = getCurrentActivity();
 
-            if (currentActivity == null) {
+            if (activity == null) {
                 promise.reject("NO_ACTIVITY", "Activity not found");
                 return;
             }
 
-            String licenseKey = config.hasKey("licenseKey") ? config.getString("licenseKey") : "";
-            String customRef = config.hasKey("customRef") ? config.getString("customRef") : "";
-
-            String initJson = "{"
-                    + "\"request\":{"
-                    + "\"licenseKey\":\"" + licenseKey + "\","
-                    + "\"customRef\":\"" + customRef + "\""
-                    + "},"
-                    + "\"timestamp\":\"\""
-                    + "}";
-
-            Intent intent = new Intent(currentActivity, FaceLibActivity.class);
+            Intent intent = new Intent(activity, FaceLibActivity.class);
             intent.setAction("in.face.lib.init");
-            intent.putExtra("input", initJson.getBytes("UTF-8"));
 
-            currentActivity.startActivityForResult(intent, INIT_REQUEST_CODE);
+            activity.startActivityForResult(intent, INIT_REQUEST_CODE);
 
         } catch (Exception e) {
             promise.reject("INIT_ERROR", e.getMessage());
         }
     }
 
-    // ✅ FIXED: Supports BOTH 3 and 4 param calls
+    // ✅ STEP 1: CAPTURE
     @ReactMethod
-    public void faceCompare(boolean cameraSwitch, boolean liveness, String vcImageData, int mode, Promise promise) {
-        Log.d("NPR_DEBUG", "faceCompare called");
-
+    public void captureFace(boolean cameraSwitch, boolean liveness, int mode, Promise promise) {
         try {
-            this.generateAndIdentifyPromise = promise;
-            Activity currentActivity = getCurrentActivity();
+            this.capturePromise = promise;
+            Activity activity = getCurrentActivity();
 
-            if (currentActivity == null) {
-                promise.resolve(false);
+            if (activity == null) {
+                promise.resolve("");
                 return;
             }
 
-            String identifyJson = "{"
+            String captureJson = "{"
                     + "\"request\":{"
-                    + "\"trustLevel\":\"Low\","
-                    + "\"capturedTemplateData\":\"\","
-                    + "\"vcImageData\":\"" + vcImageData + "\""
+                    + "\"captureMode\":\"" + (mode == 1 ? "GUIDED_CAPTURE" : "SIMPLE_CAPTURE") + "\","
+                    + "\"cameraId\":\"" + (cameraSwitch ? "0" : "1") + "\","
+                    + "\"livenessCheck\":" + liveness
                     + "},"
                     + "\"timestamp\":\"\""
                     + "}";
 
-            Intent intent = new Intent(currentActivity, FaceLibActivity.class);
-            intent.setAction("in.face.lib.generateAndIdentifyTemplates");
-            intent.putExtra("input", identifyJson.getBytes("UTF-8"));
+            Intent intent = new Intent(activity, FaceLibActivity.class);
+            intent.setAction("in.face.lib.capture");
+            intent.putExtra("input", captureJson.getBytes("UTF-8"));
 
-            currentActivity.startActivityForResult(intent, GENERATE_AND_IDENTIFY_REQUEST_CODE);
+            activity.startActivityForResult(intent, CAPTURE_REQUEST_CODE);
+
+        } catch (Exception e) {
+            promise.resolve("");
+        }
+    }
+
+    // ✅ STEP 2: MATCH
+    @ReactMethod
+    public void generateAndIdentifyTemplates(String template, String vcImage, Promise promise) {
+        try {
+            this.matchPromise = promise;
+            Activity activity = getCurrentActivity();
+
+            if (activity == null) {
+                promise.resolve(false);
+                return;
+            }
+
+            String json = "{"
+                    + "\"request\":{"
+                    + "\"trustLevel\":\"Low\","
+                    + "\"capturedTemplateData\":\"" + template + "\","
+                    + "\"vcImageData\":\"" + vcImage + "\""
+                    + "},"
+                    + "\"timestamp\":\"\""
+                    + "}";
+
+            Intent intent = new Intent(activity, FaceLibActivity.class);
+            intent.setAction("in.face.lib.generateAndIdentifyTemplates");
+            intent.putExtra("input", json.getBytes("UTF-8"));
+
+            activity.startActivityForResult(intent, MATCH_REQUEST_CODE);
 
         } catch (Exception e) {
             promise.resolve(false);
@@ -117,50 +130,67 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
     @Override
     public void onActivityResult(Activity activity, int requestCode, int resultCode, Intent data) {
 
-        if (requestCode == INIT_REQUEST_CODE) {
-            if (initPromise == null) return;
+        try {
+            if (requestCode == INIT_REQUEST_CODE && initPromise != null) {
 
-            try {
+                boolean success = false;
+
                 if (resultCode == Activity.RESULT_OK && data != null) {
-                    byte[] responseBytes = data.getByteArrayExtra("response");
+                    byte[] res = data.getByteArrayExtra("response");
 
                     SdkResponse<InitResponse> response = new ObjectMapper()
-                            .readValue(responseBytes, new TypeReference<SdkResponse<InitResponse>>() {});
+                            .readValue(res, new TypeReference<SdkResponse<InitResponse>>() {});
 
-                    boolean success = response.getResponse() != null && response.getResponse().isInitSuccessful();
-
-                    initPromise.resolve(success);
-                } else {
-                    initPromise.resolve(false);
+                    success = response.getResponse() != null &&
+                              response.getResponse().isInitSuccessful();
                 }
-            } catch (Exception e) {
-                initPromise.resolve(false);
-            } finally {
+
+                initPromise.resolve(success);
                 initPromise = null;
             }
-        }
 
-        else if (requestCode == GENERATE_AND_IDENTIFY_REQUEST_CODE) {
-            if (generateAndIdentifyPromise == null) return;
+            else if (requestCode == CAPTURE_REQUEST_CODE && capturePromise != null) {
 
-            try {
+                String result = "";
+
                 if (resultCode == Activity.RESULT_OK && data != null) {
-                    byte[] responseBytes = data.getByteArrayExtra("response");
+                    byte[] res = data.getByteArrayExtra("response");
+
+                    SdkResponse<CaptureResponse> response = new ObjectMapper()
+                            .readValue(res, new TypeReference<SdkResponse<CaptureResponse>>() {});
+
+                    if (response.getResponse() != null) {
+                        byte[] template = response.getResponse().getBioRecord().getTemplate();
+                        result = Base64.encodeToString(template, Base64.NO_WRAP);
+                    }
+                }
+
+                capturePromise.resolve(result);
+                capturePromise = null;
+            }
+
+            else if (requestCode == MATCH_REQUEST_CODE && matchPromise != null) {
+
+                boolean match = false;
+
+                if (resultCode == Activity.RESULT_OK && data != null) {
+                    byte[] res = data.getByteArrayExtra("response");
 
                     SdkResponse<GenerateAndIdentifyTemplateResponse> response = new ObjectMapper()
-                            .readValue(responseBytes, new TypeReference<SdkResponse<GenerateAndIdentifyTemplateResponse>>() {});
+                            .readValue(res, new TypeReference<SdkResponse<GenerateAndIdentifyTemplateResponse>>() {});
 
-                    boolean match = response.getResponse() != null && response.getResponse().isMatchSuccessful();
-
-                    generateAndIdentifyPromise.resolve(match);
-                } else {
-                    generateAndIdentifyPromise.resolve(false);
+                    match = response.getResponse() != null &&
+                            response.getResponse().isMatchSuccessful();
                 }
-            } catch (Exception e) {
-                generateAndIdentifyPromise.resolve(false);
-            } finally {
-                generateAndIdentifyPromise = null;
+
+                matchPromise.resolve(match);
+                matchPromise = null;
             }
+
+        } catch (Exception e) {
+            if (capturePromise != null) capturePromise.resolve("");
+            if (matchPromise != null) matchPromise.resolve(false);
+            if (initPromise != null) initPromise.resolve(false);
         }
     }
 
