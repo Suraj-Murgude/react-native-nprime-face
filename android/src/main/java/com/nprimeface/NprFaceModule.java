@@ -1,8 +1,9 @@
 package com.nprimeface;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
-import android.widget.Toast;
+import android.content.SharedPreferences;
 import android.util.Base64;
 import androidx.annotation.NonNull;
 import android.util.Log;
@@ -11,11 +12,8 @@ import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
-import java.io.IOException;
 
 import in.nprime.injisdk.dto.CaptureRequest;
 import in.nprime.injisdk.dto.CaptureResponse;
@@ -35,6 +33,13 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
     private static final int CAPTURE_REQUEST_CODE = 1001;
     private static final int GENERATE_AND_IDENTIFY_REQUEST_CODE = 1002;
 
+    // SharedPreferences keys
+    private static final String PREF_NAME = "NPrimePrefs";
+    private static final String PREF_KEY_INITIALIZED = "isInitialized";
+
+    //  Runtime cache — avoids SharedPreferences read on every call
+    private static boolean isInitialized = false;
+
     private Promise capturePromise;
     private Promise initPromise;
     private Promise generateAndIdentifyPromise;
@@ -43,6 +48,22 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
         super(context);
         reactContext = context;
         reactContext.addActivityEventListener(this);
+
+        //  On module load, restore persisted state from SharedPreferences
+        isInitialized = getPrefs().getBoolean(PREF_KEY_INITIALIZED, false);
+        Log.d("NPR_JAVA_SHIELD", "Module loaded. isInitialized from storage = " + isInitialized);
+    }
+
+    //  Helper to get SharedPreferences
+    private SharedPreferences getPrefs() {
+        return reactContext.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
+    }
+
+    //  Helper to persist initialized state
+    private void saveInitialized(boolean value) {
+        getPrefs().edit().putBoolean(PREF_KEY_INITIALIZED, value).apply();
+        isInitialized = value;
+        Log.d("NPR_JAVA_SHIELD", "Saved isInitialized = " + value);
     }
 
     @NonNull
@@ -53,7 +74,13 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
 
     @ReactMethod
     public void configure(Promise promise) {
-        Log.d("NPR_JAVA_SHIELD", "Received configure call. Initializing...");
+        // Already initialized (even after app kill) — skip popup forever
+        if (isInitialized) {
+            Log.d("NPR_JAVA_SHIELD", "Already initialized (persisted). Skipping popup.");
+            promise.resolve(true);
+            return;
+        }
+        Log.d("NPR_JAVA_SHIELD", "First ever launch — showing NPrime popup once.");
         handleInitialization(promise);
     }
 
@@ -72,6 +99,7 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
             Intent initIntent = new Intent(currentActivity, FaceLibActivity.class);
             initIntent.setAction("in.face.lib.init");
             currentActivity.startActivityForResult(initIntent, INIT_REQUEST_CODE);
+
         } catch (Exception e) {
             if (initPromise != null) {
                 initPromise.reject("Intent setup error", e.getMessage());
@@ -98,7 +126,7 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
             captureRequest.setCaptureMode(cameraMode == 1 ? CaptureMode.GUIDED_CAPTURE : CaptureMode.SIMPLE_CAPTURE);
             captureRequest.setCameraId(cameraSwitch ? "0" : "1");
             captureRequest.setLivenessCheck(livenessSwitch);
-            
+
             SdkRequest<CaptureRequest> sdkRequest = new SdkRequest<>();
             sdkRequest.setRequest(captureRequest);
             sdkRequest.setTimestamp("");
@@ -129,7 +157,7 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
                 }
                 return;
             }
-            
+
             GenerateAndIdentifyTemplateRequest request = new GenerateAndIdentifyTemplateRequest();
             request.setTrustLevel("Low");
             request.setCapturedTemplateData(capturedTemplate);
@@ -154,6 +182,7 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
 
     @Override
     public void onActivityResult(Activity activity, int requestCode, int resultCode, Intent data) {
+
         if (requestCode == CAPTURE_REQUEST_CODE) {
             if (capturePromise == null) return;
             try {
@@ -165,7 +194,6 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
 
                         if (sdkResponse.getSdkError() != null && 1000 == sdkResponse.getSdkError().getErrorCode()) {
                             byte[] captureTemplate = sdkResponse.getResponse().getBioRecord().getTemplate();
-                            // 👇 USE NO_WRAP TO PREVENT BRIDGE CRASH
                             String encodedTemplate = Base64.encodeToString(captureTemplate, Base64.NO_WRAP);
                             capturePromise.resolve(encodedTemplate);
                         } else {
@@ -193,11 +221,19 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
                             .readValue(sdkResponseBytes, new TypeReference<SdkResponse<InitResponse>>() {});
 
                     boolean success = response.getResponse() != null && response.getResponse().isInitSuccessful();
+
+                    //  Save to SharedPreferences — persists across app kills forever
+                    if (success) {
+                        saveInitialized(true);
+                        Log.d("NPR_JAVA_SHIELD", "NPrime initialized & saved. Popup will NEVER show again.");
+                    }
+
                     initPromise.resolve(success);
                 } else {
                     initPromise.resolve(false);
                 }
             } catch (Exception e) {
+                Log.e("NPR_ERROR", "Init result error", e);
                 initPromise.resolve(false);
             } finally {
                 initPromise = null;
@@ -221,6 +257,7 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
                     generateAndIdentifyPromise.resolve(false);
                 }
             } catch (Exception e) {
+                Log.e("NPR_ERROR", "Match result error", e);
                 generateAndIdentifyPromise.resolve(false);
             } finally {
                 generateAndIdentifyPromise = null;
@@ -230,4 +267,4 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
 
     @Override
     public void onNewIntent(Intent intent) {}
-}	
+}
