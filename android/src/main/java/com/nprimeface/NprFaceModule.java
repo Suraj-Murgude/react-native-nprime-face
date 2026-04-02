@@ -2,30 +2,30 @@ package com.nprimeface;
 
 import android.app.Activity;
 import android.content.Intent;
-import android.util.Base64;
-import android.util.Log;
 import android.widget.Toast;
-
+import android.util.Base64;
+import androidx.annotation.NonNull;
+import android.util.Log;
 import com.facebook.react.bridge.ActivityEventListener;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.type.TypeReference;
 
-import in.face.lib.FaceLibActivity;
-import in.face.lib.models.CaptureMode;
-import in.face.lib.models.CaptureRequest;
-import in.face.lib.models.GenerateAndIdentifyTemplateRequest;
-import in.face.lib.models.GenerateAndIdentifyTemplateResponse;
-import in.face.lib.models.InitRequest;
-import in.face.lib.models.InitResponse;
-import in.face.lib.models.SdkError;
-import in.face.lib.models.SdkRequest;
-import in.face.lib.models.SdkResponse;
-import in.face.lib.models.CaptureResponse;
+import java.io.IOException;
+
+import in.nprime.injisdk.dto.CaptureRequest;
+import in.nprime.injisdk.dto.CaptureResponse;
+import in.nprime.injisdk.FaceLibActivity;
+import in.nprime.injisdk.dto.SdkRequest;
+import in.nprime.injisdk.dto.SdkResponse;
+import in.nprime.injisdk.Constants.CaptureMode;
+import in.nprime.injisdk.dto.InitResponse;
+import in.nprime.injisdk.dto.GenerateAndIdentifyTemplateRequest;
+import in.nprime.injisdk.dto.GenerateAndIdentifyTemplateResponse;
 
 public class NprFaceModule extends ReactContextBaseJavaModule implements ActivityEventListener {
     public static final String NAME = "NprFaceModule";
