@@ -2,54 +2,58 @@ package com.nprimeface;
 
 import android.app.Activity;
 import android.content.Intent;
-import android.util.Base64;
-import android.util.Log;
 import android.widget.Toast;
-
+import android.util.Base64;
+import androidx.annotation.NonNull;
+import android.util.Log;
 import com.facebook.react.bridge.ActivityEventListener;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
-import com.facebook.react.bridge.ReadableArray; 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
-import in.nprime.injisdk.FaceLibActivity;
+import java.io.IOException;
+
 import in.nprime.injisdk.dto.CaptureRequest;
 import in.nprime.injisdk.dto.CaptureResponse;
-import in.nprime.injisdk.dto.InitResponse;
-import in.nprime.injisdk.Constants.CaptureMode;
+import in.nprime.injisdk.FaceLibActivity;
+import in.nprime.injisdk.dto.SdkRequest;
 import in.nprime.injisdk.dto.SdkResponse;
+import in.nprime.injisdk.Constants.CaptureMode;
+import in.nprime.injisdk.dto.InitResponse;
 import in.nprime.injisdk.dto.GenerateAndIdentifyTemplateRequest;
 import in.nprime.injisdk.dto.GenerateAndIdentifyTemplateResponse;
 
 public class NprFaceModule extends ReactContextBaseJavaModule implements ActivityEventListener {
-    public static final String NAME = "NprFaceModule";
-    private static final int CAPTURE_REQUEST_CODE = 101;
-    private static final int INIT_REQUEST_CODE = 102;
-    private static final int GENERATE_AND_IDENTIFY_REQUEST_CODE = 103;
+
+    private static ReactApplicationContext reactContext;
+
+    private static final int INIT_REQUEST_CODE = 1000;
+    private static final int CAPTURE_REQUEST_CODE = 1001;
+    private static final int GENERATE_AND_IDENTIFY_REQUEST_CODE = 1002;
 
     private Promise capturePromise;
     private Promise initPromise;
     private Promise generateAndIdentifyPromise;
-    private final ReactApplicationContext reactContext;
 
-    public NprFaceModule(ReactApplicationContext reactContext) {
-        super(reactContext);
-        this.reactContext = reactContext;
+    NprFaceModule(ReactApplicationContext context) {
+        super(context);
+        reactContext = context;
         reactContext.addActivityEventListener(this);
     }
 
+    @NonNull
     @Override
     public String getName() {
         return "NprFaceModule";
     }
 
-    // --- 🟢 FIXED CONFIGURE METHOD: Catch-all for any number of arguments ---
     @ReactMethod
-    public void configure(ReadableArray args, Promise promise) {
-        Log.d("NPR_JAVA_SHIELD", "Received configure call with " + args.size() + " arguments. Initializing...");
+    public void configure(Promise promise) {
+        Log.d("NPR_JAVA_SHIELD", "Received configure call. Initializing...");
         handleInitialization(promise);
     }
 
@@ -57,22 +61,17 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
         try {
             this.initPromise = promise;
             Activity currentActivity = getCurrentActivity();
-
             if (currentActivity == null) {
-                if (initPromise != null) initPromise.reject("Activity not found", "Cannot find current activity");
+                if (initPromise != null) {
+                    initPromise.reject("Activity not found", "Cannot find current activity");
+                    this.initPromise = null;
+                }
                 return;
             }
 
-            // Raw JSON to avoid "cannot find symbol SdkRequest/InitRequest"
-            String initJson = "{\"request\":{},\"timestamp\":\"\"}";
-            byte[] inputData = initJson.getBytes("UTF-8");
-
             Intent initIntent = new Intent(currentActivity, FaceLibActivity.class);
             initIntent.setAction("in.face.lib.init");
-            initIntent.putExtra("input", inputData);
-
             currentActivity.startActivityForResult(initIntent, INIT_REQUEST_CODE);
-
         } catch (Exception e) {
             if (initPromise != null) {
                 initPromise.reject("Intent setup error", e.getMessage());
@@ -88,23 +87,32 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
             Activity currentActivity = getCurrentActivity();
 
             if (currentActivity == null) {
-                if (capturePromise != null) capturePromise.resolve("");
+                if (capturePromise != null) {
+                    capturePromise.reject("Activity not found", "Cannot find current activity");
+                    this.capturePromise = null;
+                }
                 return;
             }
 
-            // Manual JSON construction to bypass DTO class issues
-            String mode = (cameraMode == 1) ? "GUIDED_CAPTURE" : "SIMPLE_CAPTURE";
-            String camId = cameraSwitch ? "0" : "1";
+            CaptureRequest captureRequest = new CaptureRequest();
+            captureRequest.setCaptureMode(cameraMode == 1 ? CaptureMode.GUIDED_CAPTURE : CaptureMode.SIMPLE_CAPTURE);
+            captureRequest.setCameraId(cameraSwitch ? "0" : "1");
+            captureRequest.setLivenessCheck(livenessSwitch);
             
-            String captureJson = "{\"request\":{\"captureMode\":\"" + mode + "\",\"cameraId\":\"" + camId + "\",\"livenessCheck\":" + livenessSwitch + "},\"timestamp\":\"\"}";
+            SdkRequest<CaptureRequest> sdkRequest = new SdkRequest<>();
+            sdkRequest.setRequest(captureRequest);
+            sdkRequest.setTimestamp("");
 
             Intent captureIntent = new Intent(currentActivity, FaceLibActivity.class);
             captureIntent.setAction("in.face.lib.capture");
-            captureIntent.putExtra("input", captureJson.getBytes("UTF-8"));
+            captureIntent.putExtra("input", new ObjectMapper().writeValueAsBytes(sdkRequest));
             currentActivity.startActivityForResult(captureIntent, CAPTURE_REQUEST_CODE);
 
         } catch (Exception e) {
-            if (capturePromise != null) capturePromise.resolve("");
+            if (capturePromise != null) {
+                capturePromise.reject("Capture setup error", e.getMessage());
+                this.capturePromise = null;
+            }
         }
     }
 
@@ -115,19 +123,32 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
             Activity currentActivity = getCurrentActivity();
 
             if (currentActivity == null) {
-                if (generateAndIdentifyPromise != null) generateAndIdentifyPromise.resolve(false);
+                if (generateAndIdentifyPromise != null) {
+                    generateAndIdentifyPromise.reject("Activity not found", "Cannot find current activity");
+                    this.generateAndIdentifyPromise = null;
+                }
                 return;
             }
             
-            String identifyJson = "{\"request\":{\"trustLevel\":\"Low\",\"capturedTemplateData\":\"" + capturedTemplate + "\",\"vcImageData\":\"" + vcImageData + "\"},\"timestamp\":\"\"}";
+            GenerateAndIdentifyTemplateRequest request = new GenerateAndIdentifyTemplateRequest();
+            request.setTrustLevel("Low");
+            request.setCapturedTemplateData(capturedTemplate);
+            request.setVcImageData(vcImageData);
+
+            SdkRequest<GenerateAndIdentifyTemplateRequest> sdkRequest = new SdkRequest<>();
+            sdkRequest.setRequest(request);
+            sdkRequest.setTimestamp("");
 
             Intent intent = new Intent(currentActivity, FaceLibActivity.class);
             intent.setAction("in.face.lib.generateAndIdentifyTemplates");
-            intent.putExtra("input", identifyJson.getBytes("UTF-8"));
+            intent.putExtra("input", new ObjectMapper().writeValueAsBytes(sdkRequest));
             currentActivity.startActivityForResult(intent, GENERATE_AND_IDENTIFY_REQUEST_CODE);
 
         } catch (Exception e) {
-            if (generateAndIdentifyPromise != null) generateAndIdentifyPromise.resolve(false);
+            if (generateAndIdentifyPromise != null) {
+                generateAndIdentifyPromise.reject("Match setup error", e.getMessage());
+                this.generateAndIdentifyPromise = null;
+            }
         }
     }
 
@@ -144,6 +165,7 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
 
                         if (sdkResponse.getSdkError() != null && 1000 == sdkResponse.getSdkError().getErrorCode()) {
                             byte[] captureTemplate = sdkResponse.getResponse().getBioRecord().getTemplate();
+                            // 👇 USE NO_WRAP TO PREVENT BRIDGE CRASH
                             String encodedTemplate = Base64.encodeToString(captureTemplate, Base64.NO_WRAP);
                             capturePromise.resolve(encodedTemplate);
                         } else {
@@ -156,7 +178,7 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
                     capturePromise.resolve("");
                 }
             } catch (Exception e) {
-                Log.e("NPR_ERROR", "Capture Error", e);
+                Log.e("NPR_ERROR", "Capture result error", e);
                 capturePromise.resolve("");
             } finally {
                 capturePromise = null;
@@ -171,7 +193,6 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
                             .readValue(sdkResponseBytes, new TypeReference<SdkResponse<InitResponse>>() {});
 
                     boolean success = response.getResponse() != null && response.getResponse().isInitSuccessful();
-                    if (success) Toast.makeText(reactContext, "SDK INITIALIZED", Toast.LENGTH_SHORT).show();
                     initPromise.resolve(success);
                 } else {
                     initPromise.resolve(false);
@@ -209,4 +230,4 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
 
     @Override
     public void onNewIntent(Intent intent) {}
-}
+}	
