@@ -2,28 +2,28 @@ package com.nprimeface;
 
 import android.app.Activity;
 import android.content.Intent;
-import android.widget.Toast;
 import android.util.Base64;
-import androidx.annotation.NonNull;
 import android.util.Log;
+import android.widget.Toast;
+
 import com.facebook.react.bridge.ActivityEventListener;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
 
-import java.io.IOException;
 
+import in.nprime.injisdk.FaceLibActivity;
 import in.nprime.injisdk.dto.CaptureRequest;
 import in.nprime.injisdk.dto.CaptureResponse;
-import in.nprime.injisdk.FaceLibActivity;
+import in.nprime.injisdk.dto.InitRequest;
+import in.nprime.injisdk.dto.InitResponse;
 import in.nprime.injisdk.dto.SdkRequest;
 import in.nprime.injisdk.dto.SdkResponse;
 import in.nprime.injisdk.Constants.CaptureMode;
-import in.nprime.injisdk.dto.InitResponse;
 import in.nprime.injisdk.dto.GenerateAndIdentifyTemplateRequest;
 import in.nprime.injisdk.dto.GenerateAndIdentifyTemplateResponse;
 
