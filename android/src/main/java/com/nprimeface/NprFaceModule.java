@@ -3,6 +3,7 @@ package com.nprimeface;
 import android.app.Activity;
 import android.content.Intent;
 import android.util.Base64;
+import android.util.Log;
 
 import com.facebook.react.bridge.ActivityEventListener;
 import com.facebook.react.bridge.Promise;
@@ -41,7 +42,7 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
         return "NprFaceModule";
     }
 
-    // ✅ EXACT SDK METHOD
+    //  SILENT initialzation (NO POPUP)
     @ReactMethod
     public void configure(Promise promise) {
         try {
@@ -53,8 +54,18 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
                 return;
             }
 
+            //  LICENSE CONFIG
+            String initJson = "{"
+                    + "\"request\":{"
+                    + "\"license_code\":\"NPRIMEINJI-48279\","
+                    + "\"customer_ref\":\"MOSIPMECB\""
+                    + "},"
+                    + "\"timestamp\":\"\""
+                    + "}";
+
             Intent intent = new Intent(activity, FaceLibActivity.class);
             intent.setAction("in.face.lib.init");
+            intent.putExtra("input", initJson.getBytes("UTF-8"));
 
             activity.startActivityForResult(intent, INIT_REQUEST_CODE);
 
@@ -63,7 +74,7 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
         }
     }
 
-    // ✅ STEP 1: CAPTURE
+    // CAPTURE FACE
     @ReactMethod
     public void captureFace(boolean cameraSwitch, boolean liveness, int mode, Promise promise) {
         try {
@@ -95,7 +106,7 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
         }
     }
 
-    // ✅ STEP 2: MATCH
+    //  MATCH FACE
     @ReactMethod
     public void generateAndIdentifyTemplates(String template, String vcImage, Promise promise) {
         try {
@@ -131,6 +142,7 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
     public void onActivityResult(Activity activity, int requestCode, int resultCode, Intent data) {
 
         try {
+            //  INIT RESULT
             if (requestCode == INIT_REQUEST_CODE && initPromise != null) {
 
                 boolean success = false;
@@ -141,14 +153,23 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
                     SdkResponse<InitResponse> response = new ObjectMapper()
                             .readValue(res, new TypeReference<SdkResponse<InitResponse>>() {});
 
-                    success = response.getResponse() != null &&
-                              response.getResponse().isInitSuccessful();
+                    if (response.getResponse() != null) {
+                        success = response.getResponse().isInitSuccessful();
+                    }
+
+                    // 🔥 DEBUG LOG (VERY IMPORTANT)
+                    if (response.getSdkError() != null) {
+                        Log.e("NPR_ERROR",
+                                response.getSdkError().getErrorCode() + " : "
+                                        + response.getSdkError().getErrorDescription());
+                    }
                 }
 
                 initPromise.resolve(success);
                 initPromise = null;
             }
 
+            //  CAPTURE RESULT
             else if (requestCode == CAPTURE_REQUEST_CODE && capturePromise != null) {
 
                 String result = "";
@@ -169,6 +190,7 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
                 capturePromise = null;
             }
 
+            //  MATCH RESULT
             else if (requestCode == MATCH_REQUEST_CODE && matchPromise != null) {
 
                 boolean match = false;
@@ -179,8 +201,9 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
                     SdkResponse<GenerateAndIdentifyTemplateResponse> response = new ObjectMapper()
                             .readValue(res, new TypeReference<SdkResponse<GenerateAndIdentifyTemplateResponse>>() {});
 
-                    match = response.getResponse() != null &&
-                            response.getResponse().isMatchSuccessful();
+                    if (response.getResponse() != null) {
+                        match = response.getResponse().isMatchSuccessful();
+                    }
                 }
 
                 matchPromise.resolve(match);
@@ -188,6 +211,8 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
             }
 
         } catch (Exception e) {
+            Log.e("NPR_ERROR", "Exception: " + e.getMessage());
+
             if (capturePromise != null) capturePromise.resolve("");
             if (matchPromise != null) matchPromise.resolve(false);
             if (initPromise != null) initPromise.resolve(false);
