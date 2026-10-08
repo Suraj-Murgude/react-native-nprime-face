@@ -57,8 +57,8 @@ public class NprFaceModule extends ReactContextBaseJavaModule implements Activit
             //  LICENSE CONFIG
             String initJson = "{"
                     + "\"request\":{"
-                    + "\"license_code\":\"NPRIMEINJI-48279\","
-                    + "\"customer_ref\":\"MOSIPMECB\""
+                    + "\"license_code\":\"NPRIMEINJI-48379\","
+                    + "\"customer_ref\":\"GABONINJIPILOT\""
                     + "},"
                     + "\"timestamp\":\"\""
                     + "}";
